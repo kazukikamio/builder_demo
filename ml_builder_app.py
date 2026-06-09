@@ -9,150 +9,246 @@ import lightgbm as lgb
 import onnxmltools
 from onnxmltools.convert.common.data_types import FloatTensorType
 
-st.set_page_config(page_title="AI EA 自作ビルダー (Prototpye)", layout="wide", page_icon="🚀")
-
-# タイトルと説明
-st.title("🚀 AI EA 自作モデルビルダー (クオンツ開発ツール)")
-st.write(
-    "MT5からエクスポートした「1分足ヒストリカルデータ（CSV）」を読み込み、**AI（LightGBM）に学習させたいインジケータ（特徴量）をマウス操作で選択するだけ**で、ご自身専用のAI予測モデル（ONNX）と、それをMT5で動かすためのソースコード（Features.mqh）を自動生成できます。"
-)
+st.set_page_config(page_title="AI EA 自作モデルビルダー", layout="wide", page_icon="🚀")
 
 # ------------------------------------------------------------------
-# 1. 特徴量（インジケータ）の日本語定義マッピング
+# 0. プレミアムUIカスタムCSSのインジェクション
+# ------------------------------------------------------------------
+st.markdown("""
+<style>
+    /* Google Fonts 読み込み */
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;600;700;800&display=swap');
+    
+    /* フォント適用 */
+    html, body, [class*="css"], .stMarkdown {
+        font-family: 'Inter', sans-serif;
+    }
+    
+    /* チェックボックスをプレミアムなカードスタイルへ */
+    div[data-testid="stCheckbox"] {
+        background-color: #1a1e29;
+        padding: 14px 20px;
+        border-radius: 10px;
+        border: 1px solid #2d3446;
+        margin-bottom: 12px;
+        transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+    }
+    div[data-testid="stCheckbox"]:hover {
+        border-color: #FF4B4B;
+        background-color: #222735;
+        transform: translateY(-2px);
+        box-shadow: 0 6px 15px rgba(255, 75, 75, 0.15);
+    }
+    
+    /* チェックボックス内のテキスト */
+    div[data-testid="stCheckbox"] label {
+        font-size: 1.05rem !important;
+        font-weight: 500 !important;
+        color: #e2e8f0 !important;
+        cursor: pointer;
+    }
+    
+    /* タブのスタイル調整 */
+    button[data-baseweb="tab"] {
+        font-size: 1.05rem !important;
+        font-weight: 600 !important;
+        padding: 12px 24px !important;
+        color: #a3a8b4 !important;
+    }
+    button[data-baseweb="tab"][aria-selected="true"] {
+        color: #FF4B4B !important;
+        border-bottom-color: #FF4B4B !important;
+    }
+    
+    /* アコーディオン(Expander)のスタイル */
+    div[data-testid="stExpander"] {
+        border: 1px solid #2d3446 !important;
+        background-color: #161922 !important;
+        border-radius: 8px !important;
+        margin-bottom: 15px !important;
+    }
+    
+    /* サイドバー背景の微調整 */
+    [data-testid="stSidebar"] {
+        background-color: #0f111a !important;
+        border-right: 1px solid #1f2330 !important;
+    }
+</style>
+""", unsafe_allow_html=True)
+
+# タイトルと説明（HTML/CSSによるプレミアムヘッダー）
+st.markdown("""
+    <div style="text-align: center; padding: 2rem 1rem; margin-bottom: 2rem; background: linear-gradient(135deg, rgba(255,75,75,0.07) 0%, rgba(75,121,255,0.03) 100%); border-radius: 16px; border: 1px solid rgba(255,75,75,0.15); box-shadow: 0 4px 20px rgba(0,0,0,0.15);">
+        <h1 style="margin: 0; font-size: 2.8rem; font-weight: 800; font-family: 'Outfit', sans-serif; background: linear-gradient(90deg, #FF4B4B 0%, #FF8F8F 45%, #4B79FF 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">
+            🚀 AI EA 自作モデルビルダー
+        </h1>
+        <p style="margin: 12px 0 0 0; font-size: 1.15rem; color: #94a3b8; font-weight: 400;">
+            MT5のヒストリカルデータから、<strong>AIに学習させたいインジケータを選ぶだけ</strong>で、ご自身専用のAI予測モデル（ONNX）とMQL5コードを自動生成します。
+        </p>
+    </div>
+""", unsafe_allow_html=True)
+
+
+# ------------------------------------------------------------------
+# 1. 特徴量（インジケータ）の定義（ラベルを短くし、解説は help に移行）
 # ------------------------------------------------------------------
 FEATURE_MAP = {
-    # 5分足ベース特徴量（ラグ処理が自動適用されます）
-    "ATR_Ratio": {
-        "label": "日足ボラティリティ比率 (価格に対する値幅の大きさ)",
-        "category": "日足・時間帯の癖 (Daily & Seasonality)",
-        "mql5_handle": "hATR_D1",
-        "mql5_init": "hATR_D1 = iATR(smb, PERIOD_D1, 14);",
-        "mql5_calc": "        double atr[1];\n        if(CopyBuffer(hATR_D1, 0, shift, 1, atr) < 1) return false;\n        inputs[idx++] = (float)(atr[0] / close_price);"
-    },
+    # 5分足ベース特徴量
     "RSI_feat": {
-        "label": "RSI (買われすぎ・売られすぎを測るオシレータ)",
-        "category": "5分足のインジケータ (M5 Indicators)",
+        "label": "RSI",
+        "help": "買われすぎ・売られすぎを測るオシレータ指標です。",
+        "category": "5分足 (M5)",
         "mql5_handle": "hRSI_M5",
         "mql5_init": "hRSI_M5 = iRSI(smb, PERIOD_M5, 14, PRICE_CLOSE);",
         "mql5_calc": "        double rsi_buf[1];\n        if(CopyBuffer(hRSI_M5, 0, shift, 1, rsi_buf) < 1) return false;\n        inputs[idx++] = (float)(rsi_buf[0] / 100.0);"
     },
-    "Spread_ATR_Ratio": {
-        "label": "スプレッドコスト比率 (取引コストがボラティリティに対して適正か)",
-        "category": "スプレッド情報 (Spread Info)",
-        "mql5_handle": "hATR_D1",
-        "mql5_init": "hATR_D1 = iATR(smb, PERIOD_D1, 14);",
-        "mql5_calc": "        double atr[1];\n        if(CopyBuffer(hATR_D1, 0, shift, 1, atr) < 1) return false;\n        double spread = iSpread(smb, PERIOD_M5, shift);\n        inputs[idx++] = (float)((spread * point * 10.0) / atr[0]);"
-    },
-    "Hour_Seasonality": {
-        "label": "時間帯周期 (24時間サイクルでの値動きの癖)",
-        "category": "日足・時間帯の癖 (Daily & Seasonality)",
-        "mql5_handle": "",
-        "mql5_init": "",
-        "mql5_calc": "        datetime bar_time = iTime(smb, PERIOD_M5, shift);\n        MqlDateTime dt;\n        TimeToStruct(bar_time, dt);\n        inputs[idx++] = (float)MathSin(2.0 * M_PI * dt.hour / 24.0);\n        inputs[idx++] = (float)MathCos(2.0 * M_PI * dt.hour / 24.0);"
-    },
-    "Day_Seasonality": {
-        "label": "曜日周期 (1週間サイクルでの値動きの癖)",
-        "category": "日足・時間帯の癖 (Daily & Seasonality)",
-        "mql5_handle": "",
-        "mql5_init": "",
-        "mql5_calc": "        datetime bar_time = iTime(smb, PERIOD_M5, shift);\n        MqlDateTime dt;\n        TimeToStruct(bar_time, dt);\n        int dow = dt.day_of_week;\n        if(dow == 0) dow = 7;\n        inputs[idx++] = (float)MathSin(2.0 * M_PI * dow / 7.0);\n        inputs[idx++] = (float)MathCos(2.0 * M_PI * dow / 7.0);"
-    },
-    "FracDiff_LogPrice": {
-        "label": "分数階微分価格 (価格のトレンド成分を強調抽出しノイズを除去した値)",
-        "category": "5分足のインジケータ (M5 Indicators)",
-        "mql5_handle": "",
-        "mql5_init": "",
-        "mql5_calc": "        inputs[idx++] = (float)CalculateFracDiffLogPrice(smb, PERIOD_M5, 0.4, 30, shift);"
-    },
     "ADX_feat": {
-        "label": "ADX (トレンドの強さ・勢い)",
-        "category": "5分足のインジケータ (M5 Indicators)",
+        "label": "ADX",
+        "help": "トレンドの強さ・勢いを測定する指標です。",
+        "category": "5分足 (M5)",
         "mql5_handle": "hADX_M5",
         "mql5_init": "hADX_M5 = iADX(smb, PERIOD_M5, 14);",
         "mql5_calc": "        double adx_buf[1];\n        if(CopyBuffer(hADX_M5, 0, shift, 1, adx_buf) < 1) return false;\n        inputs[idx++] = (float)(adx_buf[0] / 100.0);"
     },
     "MACD_Diff_ATR_Ratio": {
-        "label": "MACDヒストグラム (トレンドの転換点の予測インジケータ)",
-        "category": "5分足のインジケータ (M5 Indicators)",
+        "label": "MACD ヒストグラム",
+        "help": "短期と中期の移動平均の差（勢い）を算出し、日足ATRで標準化した指標です。",
+        "category": "5分足 (M5)",
         "mql5_handle": "hMACD_M5",
         "mql5_init": "hMACD_M5 = iMACD(smb, PERIOD_M5, 12, 26, 9, PRICE_CLOSE);\n    hATR_D1 = iATR(smb, PERIOD_D1, 14);",
         "mql5_calc": "        double macd_main[1], macd_sig[1], atr[1];\n        if(CopyBuffer(hMACD_M5, 0, shift, 1, macd_main) < 1 || CopyBuffer(hMACD_M5, 1, shift, 1, macd_sig) < 1 || CopyBuffer(hATR_D1, 0, shift, 1, atr) < 1) return false;\n        inputs[idx++] = (float)((macd_main[0] - macd_sig[0]) / atr[0]);"
     },
     "BB_Width_ATR_Ratio": {
-        "label": "ボリンジャーバンド幅 (スクイーズ/エクスパンションなど相場の収縮・拡張度)",
-        "category": "5分足のインジケータ (M5 Indicators)",
+        "label": "ボリンジャーバンド幅",
+        "help": "バンドのスクイーズ（収縮）とエクスパンション（拡張）を測定し、日足ATRで標準化した指標です。",
+        "category": "5分足 (M5)",
         "mql5_handle": "hBB_M5",
         "mql5_init": "hBB_M5 = iBands(smb, PERIOD_M5, 20, 0, 2.0, PRICE_CLOSE);\n    hATR_D1 = iATR(smb, PERIOD_D1, 14);",
         "mql5_calc": "        double bb_up[1], bb_down[1], atr[1];\n        if(CopyBuffer(hBB_M5, 1, shift, 1, bb_up) < 1 || CopyBuffer(hBB_M5, 2, shift, 1, bb_down) < 1 || CopyBuffer(hATR_D1, 0, shift, 1, atr) < 1) return false;\n        inputs[idx++] = (float)((bb_up[0] - bb_down[0]) / atr[0]);"
     },
     "EMA_Diff_ATR_Ratio": {
-        "label": "EMA 200 乖離率 (長期トレンド方向からの価格の離れ具合)",
-        "category": "5分足のインジケータ (M5 Indicators)",
+        "label": "EMA 200 乖離率",
+        "help": "価格が長期移動平均線（EMA200）からどれだけ離れているかを測定します。",
+        "category": "5分足 (M5)",
         "mql5_handle": "hEMA_M5",
         "mql5_init": "hEMA_M5 = iMA(smb, PERIOD_M5, 200, 0, MODE_EMA, PRICE_CLOSE);\n    hATR_D1 = iATR(smb, PERIOD_D1, 14);",
         "mql5_calc": "        double ema_val[1], atr[1];\n        if(CopyBuffer(hEMA_M5, 0, shift, 1, ema_val) < 1 || CopyBuffer(hATR_D1, 0, shift, 1, atr) < 1) return false;\n        inputs[idx++] = (float)((close_price - ema_val[0]) / atr[0]);"
     },
-    "Hour_Activity_feat": {
-        "label": "市場活動度 (時間帯別の平均取引量の大きさ)",
-        "category": "日足・時間帯の癖 (Daily & Seasonality)",
-        "mql5_handle": "",
-        "mql5_init": "",
-        "mql5_calc": "        datetime bar_time = iTime(smb, PERIOD_M5, shift);\n        MqlDateTime dt;\n        TimeToStruct(bar_time, dt);\n        int hour_activity_map[24] = {7, 9, 8, 5, 2, 3, 5, 6, 6, 6, 6, 6, 8, 10, 10, 9, 8, 7, 6, 6, 4, 3, 5, 7};\n        inputs[idx++] = (float)(hour_activity_map[dt.hour] / 10.0);"
-    },
     "Momentum_5": {
-        "label": "モメンタム 5本 (直近のローソク足の勢い)",
-        "category": "5分足のインジケータ (M5 Indicators)",
+        "label": "短期モメンタム (5本前比)",
+        "help": "直近5本のローソク足の価格変化率を測定します。",
+        "category": "5分足 (M5)",
         "mql5_handle": "hATR_M5",
         "mql5_init": "hATR_M5 = iATR(smb, PERIOD_M5, 14);",
         "mql5_calc": "        double atr_tf[1];\n        if(CopyBuffer(hATR_M5, 0, shift, 1, atr_tf) < 1) return false;\n        double prev_close_5 = iClose(smb, PERIOD_M5, shift + 5);\n        inputs[idx++] = (float)((close_price - prev_close_5) / (atr_tf[0] + 1e-10));"
     },
     "Momentum_15": {
-        "label": "モメンタム 15本 (中期ローソク足の勢い)",
-        "category": "5分足のインジケータ (M5 Indicators)",
+        "label": "中期モメンタム (15本前比)",
+        "help": "直近15本のローソク足の価格変化率を測定します。",
+        "category": "5分足 (M5)",
         "mql5_handle": "hATR_M5",
         "mql5_init": "hATR_M5 = iATR(smb, PERIOD_M5, 14);",
         "mql5_calc": "        double atr_tf[1];\n        if(CopyBuffer(hATR_M5, 0, shift, 1, atr_tf) < 1) return false;\n        double prev_close_15 = iClose(smb, PERIOD_M5, shift + 15);\n        inputs[idx++] = (float)((close_price - prev_close_15) / (atr_tf[0] + 1e-10));"
     },
+    "FracDiff_LogPrice": {
+        "label": "分数階微分対数価格",
+        "help": "価格データの「定常性（予測のしやすさ）」を高めつつ、トレンド情報を保存した特殊な変換値です。",
+        "category": "5分足 (M5)",
+        "mql5_handle": "",
+        "mql5_init": "",
+        "mql5_calc": "        inputs[idx++] = (float)CalculateFracDiffLogPrice(smb, PERIOD_M5, 0.4, 30, shift);"
+    },
+
+    # 日足・環境特徴量
+    "ATR_Ratio": {
+        "label": "日足ボラティリティ比率",
+        "help": "日足のATR（平均値幅）に対する現在価格の比率。ボラティリティの大きさをAIに伝えます。",
+        "category": "日足・スプレッド・周期性",
+        "mql5_handle": "hATR_D1",
+        "mql5_init": "hATR_D1 = iATR(smb, PERIOD_D1, 14);",
+        "mql5_calc": "        double atr[1];\n        if(CopyBuffer(hATR_D1, 0, shift, 1, atr) < 1) return false;\n        inputs[idx++] = (float)(atr[0] / close_price);"
+    },
+    "Spread_ATR_Ratio": {
+        "label": "スプレッドコスト比率",
+        "help": "現在取引コストが値幅に対して高いか低いかを判定する比率です。",
+        "category": "日足・スプレッド・周期性",
+        "mql5_handle": "hATR_D1",
+        "mql5_init": "hATR_D1 = iATR(smb, PERIOD_D1, 14);",
+        "mql5_calc": "        double atr[1];\n        if(CopyBuffer(hATR_D1, 0, shift, 1, atr) < 1) return false;\n        double spread = iSpread(smb, PERIOD_M5, shift);\n        inputs[idx++] = (float)((spread * point * 10.0) / atr[0]);"
+    },
+    "Hour_Seasonality": {
+        "label": "時間帯 (24時間周期)",
+        "help": "エントリー時の時間帯の周期性をサイン・コサインの2次元情報でAIに伝えます。",
+        "category": "日足・スプレッド・周期性",
+        "mql5_handle": "",
+        "mql5_init": "",
+        "mql5_calc": "        datetime bar_time = iTime(smb, PERIOD_M5, shift);\n        MqlDateTime dt;\n        TimeToStruct(bar_time, dt);\n        inputs[idx++] = (float)MathSin(2.0 * M_PI * dt.hour / 24.0);\n        inputs[idx++] = (float)MathCos(2.0 * M_PI * dt.hour / 24.0);"
+    },
+    "Day_Seasonality": {
+        "label": "曜日 (1週間周期)",
+        "help": "取引が行われる曜日の周期性をAIに伝えます。",
+        "category": "日足・スプレッド・周期性",
+        "mql5_handle": "",
+        "mql5_init": "",
+        "mql5_calc": "        datetime bar_time = iTime(smb, PERIOD_M5, shift);\n        MqlDateTime dt;\n        TimeToStruct(bar_time, dt);\n        int dow = dt.day_of_week;\n        if(dow == 0) dow = 7;\n        inputs[idx++] = (float)MathSin(2.0 * M_PI * dow / 7.0);\n        inputs[idx++] = (float)MathCos(2.0 * M_PI * dow / 7.0);"
+    },
+    "Hour_Activity_feat": {
+        "label": "市場活動度スコア",
+        "help": "ロンドン時間やニューヨーク時間など、市場が活発になる時間帯かどうかのスコアです。",
+        "category": "日足・スプレッド・周期性",
+        "mql5_handle": "",
+        "mql5_init": "",
+        "mql5_calc": "        datetime bar_time = iTime(smb, PERIOD_M5, shift);\n        MqlDateTime dt;\n        TimeToStruct(bar_time, dt);\n        int hour_activity_map[24] = {7, 9, 8, 5, 2, 3, 5, 6, 6, 6, 6, 6, 8, 10, 10, 9, 8, 7, 6, 6, 4, 3, 5, 7};\n        inputs[idx++] = (float)(hour_activity_map[dt.hour] / 10.0);"
+    },
     
-    # 上位足インジケータ (マルチタイムフレーム処理 - shift 1 のみ)
+    # 1時間足 (H1)
     "RSI_60m": {
-        "label": "1時間足 RSI (長期オシレータ方向)",
-        "category": "上位足インジケータ (1時間足 / H1)",
+        "label": "1時間足 RSI",
+        "help": "上位足（1時間足）の買われすぎ・売られすぎ方向です。",
+        "category": "上位足 (1時間足 / H1)",
         "mql5_handle": "hRSI_H1",
         "mql5_init": "hRSI_H1 = iRSI(smb, PERIOD_H1, 14, PRICE_CLOSE);",
         "mql5_calc_mtf": "    double rsi_h1[1];\n    if(CopyBuffer(hRSI_H1, 0, 1, 1, rsi_h1) < 1) return false;\n    inputs[idx++] = (float)(rsi_h1[0] / 100.0);"
     },
     "ADX_60m": {
-        "label": "1時間足 ADX (長期トレンドの強度)",
-        "category": "上位足インジケータ (1時間足 / H1)",
+        "label": "1時間足 ADX",
+        "help": "上位足（1時間足）のトレンドの強さです。",
+        "category": "上位足 (1時間足 / H1)",
         "mql5_handle": "hADX_H1",
         "mql5_init": "hADX_H1 = iADX(smb, PERIOD_H1, 14);",
         "mql5_calc_mtf": "    double adx_h1[1];\n    if(CopyBuffer(hADX_H1, 0, 1, 1, adx_h1) < 1) return false;\n    inputs[idx++] = (float)(adx_h1[0] / 100.0);"
     },
     "EMA_Diff_ATR_Ratio_60m": {
-        "label": "1時間足 EMA200 乖離率 (長期的な移動平均との乖離)",
-        "category": "上位足インジケータ (1時間足 / H1)",
+        "label": "1時間足 EMA200乖離率",
+        "help": "1時間足における長期移動平均線乖離です。",
+        "category": "上位足 (1時間足 / H1)",
         "mql5_handle": "hEMA_H1",
         "mql5_init": "hEMA_H1 = iMA(smb, PERIOD_H1, 200, 0, MODE_EMA, PRICE_CLOSE);\n    hATR_H1 = iATR(smb, PERIOD_H1, 14);",
         "mql5_calc_mtf": "    double ema_h1[1], atr_h1[1];\n    if(CopyBuffer(hEMA_H1, 0, 1, 1, ema_h1) < 1 || CopyBuffer(hATR_H1, 0, 1, 1, atr_h1) < 1) return false;\n    double close_h1 = iClose(smb, PERIOD_H1, 1);\n    inputs[idx++] = (float)((close_h1 - ema_h1[0]) / atr_h1[0]);"
     },
+
+    # 4時間足 (H4)
     "RSI_240m": {
-        "label": "4時間足 RSI (超長期オシレータ方向)",
-        "category": "上位足インジケータ (4時間足 / H4)",
+        "label": "4時間足 RSI",
+        "help": "上位足（4時間足）のRSIです。",
+        "category": "上位足 (4時間足 / H4)",
         "mql5_handle": "hRSI_H4",
         "mql5_init": "hRSI_H4 = iRSI(smb, PERIOD_H4, 14, PRICE_CLOSE);",
         "mql5_calc_mtf": "    double rsi_h4[1];\n    if(CopyBuffer(hRSI_H4, 0, 1, 1, rsi_h4) < 1) return false;\n    inputs[idx++] = (float)(rsi_h4[0] / 100.0);"
     },
     "ADX_240m": {
-        "label": "4時間足 ADX (超長期トレンドの強度)",
-        "category": "上位足インジケータ (4時間足 / H4)",
+        "label": "4時間足 ADX",
+        "help": "上位足（4時間足）のADXです。",
+        "category": "上位足 (4時間足 / H4)",
         "mql5_handle": "hADX_H4",
         "mql5_init": "hADX_H4 = iADX(smb, PERIOD_H4, 14);",
         "mql5_calc_mtf": "    double adx_h4[1];\n    if(CopyBuffer(hADX_H4, 0, 1, 1, adx_h4) < 1) return false;\n    inputs[idx++] = (float)(adx_h4[0] / 100.0);"
     },
     "EMA_Diff_ATR_Ratio_240m": {
-        "label": "4時間足 EMA200 乖離率 (超長期移動平均との乖離)",
-        "category": "上位足インジケータ (4時間足 / H4)",
+        "label": "4時間足 EMA200乖離率",
+        "help": "4時間足における長期移動平均線乖離です。",
+        "category": "上位足 (4時間足 / H4)",
         "mql5_handle": "hEMA_H4",
         "mql5_init": "hEMA_H4 = iMA(smb, PERIOD_H4, 200, 0, MODE_EMA, PRICE_CLOSE);\n    hATR_H4 = iATR(smb, PERIOD_H4, 14);",
         "mql5_calc_mtf": "    double ema_h4[1], atr_h4[1];\n    if(CopyBuffer(hEMA_H4, 0, 1, 1, ema_h4) < 1 || CopyBuffer(hATR_H4, 0, 1, 1, atr_h4) < 1) return false;\n    double close_h4 = iClose(smb, PERIOD_H4, 1);\n    inputs[idx++] = (float)((close_h4 - ema_h4[0]) / atr_h4[0]);"
@@ -160,7 +256,7 @@ FEATURE_MAP = {
 }
 
 # ------------------------------------------------------------------
-# 1.5 カスタムインジケータ（custom_features.py）の自動ロード
+# 1.5 カスタムインジケータファイルのロード
 # ------------------------------------------------------------------
 try:
     if os.path.exists("custom_features.py"):
@@ -170,94 +266,112 @@ try:
         if hasattr(custom_features, "CUSTOM_INDICATORS"):
             for key, val in custom_features.CUSTOM_INDICATORS.items():
                 FEATURE_MAP[key] = val
-            st.sidebar.success(f"✅ 独自カスタム特徴量 ({len(custom_features.CUSTOM_INDICATORS)}個) のロードに成功！")
+            st.sidebar.success(f"Custom loaded: {len(custom_features.CUSTOM_INDICATORS)}個")
 except Exception as e:
-    st.sidebar.warning(f"⚠️ カスタム特徴量の読み込みエラー: {e}")
+    st.sidebar.warning(f"Custom load error: {e}")
 
 # ------------------------------------------------------------------
-# 2. サイドバー設定 (初心者向け説明付き)
+# 2. サイドバー設定（コントロールパネル）
 # ------------------------------------------------------------------
 st.sidebar.header("⚙️ システム基本設定")
 
-# CSVデータ自動検出
 csv_files = glob.glob("*_M1*.csv")
 if not csv_files:
     st.sidebar.error("CSVデータが見つかりません。MT5から出力した『BTCUSD_M1.csv』などのファイルをフォルダ内に置いてください。")
     selected_csv = None
 else:
-    selected_csv = st.sidebar.selectbox("📂 ヒストリカルデータ (M1 CSV) の選択", csv_files, help="MT5からエクスポートした学習用データを選択します。")
+    selected_csv = st.sidebar.selectbox("📂 ヒストリカルデータ", csv_files)
 
-st.sidebar.subheader("🎯 利確・損切りの目安時間 (AIターゲット)")
-barrier_mult = st.sidebar.slider("AIが狙う目標値幅の広さ (ボラティリティ乗数)", 0.10, 0.50, 0.20, 0.05, help="インジケータのATRに対する比率。数値を大きくすると長期保有（大損小利・大利小損）になり、小さくするとスキャルピング向きになります。通常0.20が標準です。")
-horizon_m5 = st.sidebar.number_input("5分足での最大保有時間 (バー本数)", 30, 240, 120, 10, help="この本数の間に目標値幅に達しない場合はレンジ決済と判定。120本で10時間に対応。")
-horizon_m15 = st.sidebar.number_input("15分足での最大保有時間 (バー本数)", 120, 720, 360, 20, help="15分足時の判定用。360本で90時間に対応。")
+# アコーディオンでパラメータ設定を美しく整理
+with st.sidebar.expander("🎯 利確・損切の目安時間 (AIターゲット)", expanded=True):
+    barrier_mult = st.slider("AIが狙う目標値幅の広さ (ポラティリティ乗数)", 0.10, 0.50, 0.20, 0.05)
+    horizon_m5 = st.number_input("5分足での最大保有時間 (バー本数)", 30, 240, 120, 10)
+    horizon_m15 = st.number_input("15分足での最大保有時間 (バー本数)", 120, 720, 360, 20)
 
-st.sidebar.subheader("🧠 AIの学習細かさ調整 (上級者用)")
-learning_rate = st.sidebar.slider("学習スピード (Learning Rate)", 0.01, 0.10, 0.03, 0.01, help="AIがパターンをどれだけ細かく学ぶか。小さいほど高精度ですが時間がかかります。デフォルトは0.03です。")
-max_depth = st.sidebar.slider("AI意思決定ツリーの深さ (Max Depth)", 3, 10, 6, 1, help="ツリーの最大深さ。大きいほど複雑な条件を覚えますが、過学習（過去データだけに強くなる現象）のリスクが高まります。")
-num_leaves = st.sidebar.slider("ツリーの分岐数 (Num Leaves)", 15, 127, 31, 2, help="決定ツリーの分岐点。31が標準です。")
-n_estimators = st.sidebar.number_input("ツリー構築数 (Estimators)", 50, 1000, 300, 50, help="決定ツリーの合計本数。多いほど予測が安定します。")
+with st.sidebar.expander("🧠 AIモデル学習設定 (詳細)", expanded=False):
+    learning_rate = st.slider("学習率", 0.01, 0.10, 0.03, 0.01)
+    max_depth = st.slider("ツリー最大深さ", 3, 10, 6, 1)
+    num_leaves = st.slider("分岐数 (Leaves)", 15, 127, 31, 2)
+    n_estimators = st.number_input("学習本数 (Estimators)", 50, 1000, 300, 50)
 
 # ------------------------------------------------------------------
-# 3. メイン画面 特徴量チェックボックスグリッド
+# 3. メイン画面：すっきりしたタブレイアウト
 # ------------------------------------------------------------------
-st.header("🛠️ ステップ1: AIに読み込ませるインジケータの選択")
-st.write("AIに値動きの予測判断材料として使わせたいインジケータにチェックを入れてください。")
+st.markdown("""
+    <h2 style="font-weight: 700; color: #fafafa; border-bottom: 2px solid #2d3446; padding-bottom: 8px; margin-top: 1.5rem;">
+        🛠️ ステップ1: AIに読み込ませるインジケータの選択
+    </h2>
+    <p style="font-size: 1.05rem; color: #94a3b8; margin-bottom: 1.5rem;">
+        AIに値動きの予測判断材料として使わせたいインジケータにチェックを入れてください。※マウスホバーで説明が表示されます
+    </p>
+""", unsafe_allow_html=True)
 
-categories = [
-    "5分足のインジケータ (M5 Indicators)",
-    "日足・時間帯の癖 (Daily & Seasonality)",
-    "スプレッド情報 (Spread Info)",
-    "上位足インジケータ (1時間足 / H1)",
-    "上位足インジケータ (4時間足 / H4)"
-]
 
-# 追加されたカスタムカテゴリを動的登録
+# カブりをなくした綺麗なカテゴリーリスト
+categories = ["5分足 (M5)", "上位足 (1時間足 / H1)", "上位足 (4時間足 / H4)", "日足・スプレッド・周期性"]
 for f_name, f_info in FEATURE_MAP.items():
     if f_info["category"] not in categories:
         categories.append(f_info["category"])
 
+# タブの作成
+tabs = st.tabs(categories)
 selected_features = []
 
-cols = st.columns(len(categories))
-for col_idx, category in enumerate(categories):
-    with cols[col_idx]:
-        st.subheader(category)
-        for f_name, f_info in FEATURE_MAP.items():
-            if f_info["category"] == category:
-                checked = st.checkbox(f_info["label"], value=True, key=f_name)
-                if checked:
-                    selected_features.append(f_name)
+for idx, category in enumerate(categories):
+    with tabs[idx]:
+        # 各カテゴリの項目を2カラム（左・右）で配置してスッキリさせる
+        cat_features = [k for k, v in FEATURE_MAP.items() if v["category"] == category]
+        if cat_features:
+            col_l, col_r = st.columns(2)
+            for f_idx, f_name in enumerate(cat_features):
+                f_info = FEATURE_MAP[f_name]
+                # 偶数は左カラム、奇数は右カラム
+                target_col = col_l if f_idx % 2 == 0 else col_r
+                with target_col:
+                    checked = st.checkbox(
+                        f_info["label"], 
+                        value=True, 
+                        key=f_name, 
+                        help=f_info.get("help", "カスタムで追加されたインジケータです。")
+                    )
+                    if checked:
+                        selected_features.append(f_name)
+        else:
+            st.write("このカテゴリに登録されている項目はありません。")
 
 # ------------------------------------------------------------------
-# 4. 次元数要約と説明
+# 4. 特徴量要約表示
 # ------------------------------------------------------------------
-base_m5_selected = [f for f in selected_features if not f.endswith("60m") and not f.endswith("240m") and FEATURE_MAP[f]["category"] not in ["上位足インジケータ (1時間足 / H1)", "上位足インジケータ (4時間足 / H4)"]]
+base_m5_selected = [f for f in selected_features if FEATURE_MAP[f]["category"] not in ["上位足 (1時間足 / H1)", "上位足 (4時間足 / H4)"]]
 mtf_selected = [f for f in selected_features if f not in base_m5_selected]
 
-# 5分足ベース特徴量は自動で4個のラグ（0, 1, 3, 7本前）を生成して学習します
 dim_base = len(base_m5_selected) * 4
 dim_mtf = len(mtf_selected)
 total_dim = dim_base + dim_mtf
 
-st.info(
-    f"📊 **【特徴量の次元数（AIモデルの入力データ）】**\n"
-    f"- 5分足インジケータ: {len(base_m5_selected)}個 × 4つの過去履歴 (現在、1本前、3本前、7本前) = {dim_base}次元\n"
-    f"- 上位足 (1時間/4時間足) インジケータ: {len(mtf_selected)}次元\n"
-    f"- **AIの予測条件データの次元数 (ONNXモデル形状): [None, {total_dim}]**"
-)
+st.markdown(f"""
+    <div style="background: linear-gradient(135deg, rgba(75,121,255,0.08) 0%, rgba(75,121,255,0.01) 100%); border: 1px solid rgba(75,121,255,0.3); border-radius: 12px; padding: 18px 24px; margin: 1.5rem 0; box-shadow: 0 4px 12px rgba(75,121,255,0.05);">
+        <div style="font-size: 1.15rem; font-weight: 700; color: #799fff; margin-bottom: 4px;">📊 選択された合計次元数: {total_dim}次元</div>
+        <div style="font-size: 0.95rem; color: #94a3b8;">
+            ベース特徴量: {len(base_m5_selected)}個 × 4つの時系列履歴 ({dim_base}次元) ＋ 上位足・環境情報: {len(mtf_selected)}次元
+        </div>
+    </div>
+""", unsafe_allow_html=True)
 
 # ------------------------------------------------------------------
-# 5. モデル学習パイプライン
+# 5. モデル学習と書き出し
 # ------------------------------------------------------------------
-st.header("🤖 ステップ2: AIのトレーニング開始とコード書き出し")
+st.markdown("""
+    <h2 style="font-weight: 700; color: #fafafa; border-bottom: 2px solid #2d3446; padding-bottom: 8px; margin-top: 2rem; margin-bottom: 1.2rem;">
+        🤖 モデルの学習とコード書き出し
+    </h2>
+""", unsafe_allow_html=True)
 
 if st.button("🚀 AIの学習処理を開始する", disabled=(selected_csv is None or total_dim == 0)):
     symbol = os.path.basename(selected_csv).split('_M1')[0]
     
-    with st.spinner(f"データセットを計算し、{symbol} の学習モデルを構築中..."):
-        
-        # Indicator calculation functions
+    with st.spinner(f"データを集計し、{symbol} の学習を実行中..."):
+        # Helper Indicator Functions
         def calculate_rsi(series, period=14):
             delta = series.diff()
             gain = (delta.where(delta > 0, 0)).rolling(window=period).mean()
@@ -319,11 +433,11 @@ if st.button("🚀 AIの学習処理を開始する", disabled=(selected_csv is 
                 first_up = up_touches[0] if len(up_touches) > 0 else H
                 first_down = down_touches[0] if len(down_touches) > 0 else H
                 if first_up < first_down:
-                    labels[i] = 1 # UP
+                    labels[i] = 1
                 elif first_down < first_up:
-                    labels[i] = 2 # DOWN
+                    labels[i] = 2
                 else:
-                    labels[i] = 0 # Range/Flat
+                    labels[i] = 0
             return labels
 
         # Read CSV data
@@ -376,7 +490,7 @@ if st.button("🚀 AIの学習処理を開始する", disabled=(selected_csv is 
             df_tf = df_m1.set_index('DateTime').resample(tf_str).agg({'Open':'first','High':'max','Low':'min','Close':'last','Spread':'mean'}).dropna().reset_index()
             df_tf = pd.merge_asof(df_tf.sort_values('DateTime'), df_d1.sort_values('DateTime'), on='DateTime', direction='backward')
             
-            # Base indicator calculations (Standard)
+            # Base technical indicators
             df_tf['ATR_Ratio'] = df_tf['ATR_D1'] / df_tf['Close']
             df_tf['RSI_feat'] = calculate_rsi(df_tf['Close'], 14) / 100.0
             df_tf['Spread_ATR_Ratio'] = (df_tf['Spread'] * spread_mult) / df_tf['ATR_D1']
@@ -402,7 +516,7 @@ if st.button("🚀 AIの学習処理を開始する", disabled=(selected_csv is 
             df_tf['Momentum_5'] = (df_tf['Close'] - df_tf['Close'].shift(5)) / atr_tf
             df_tf['Momentum_15'] = (df_tf['Close'] - df_tf['Close'].shift(15)) / atr_tf
             
-            # Map Custom indicators dynamically
+            # Map Custom indicators
             for f in base_m5_selected:
                 if f in FEATURE_MAP and "py_calc" in FEATURE_MAP[f]:
                     df_tf[f] = FEATURE_MAP[f]["py_calc"](df_tf)
@@ -428,13 +542,10 @@ if st.button("🚀 AIの学習処理を開始する", disabled=(selected_csv is 
                     else:
                         base_cols_to_shift.append(mapped)
                 else:
-                    # Custom feature key is its column name
                     base_cols_to_shift.append(f)
             
-            # Shift base features to simulate closed historical bar values only
             df_tf[base_cols_to_shift] = df_tf[base_cols_to_shift].shift(1)
             
-            # Create lags (0, 1, 3, 7 shifts)
             shifts = [0, 1, 3, 7]
             lag_cols = []
             for s_val in shifts:
@@ -443,11 +554,9 @@ if st.button("🚀 AIの学習処理を開始する", disabled=(selected_csv is 
                     df_tf[col_name] = df_tf[col].shift(s_val)
                     lag_cols.append(col_name)
             
-            # Merge higher timeframe features
             df_tf = pd.merge_asof(df_tf.sort_values('DateTime'), df_h1_feats.sort_values('DateTime'), on='DateTime', direction='backward')
             df_tf = pd.merge_asof(df_tf.sort_values('DateTime'), df_h4_feats.sort_values('DateTime'), on='DateTime', direction='backward')
             
-            # Filter selected MTF columns
             mtf_cols = []
             for f in mtf_selected:
                 mtf_cols.append(f)
@@ -455,7 +564,6 @@ if st.button("🚀 AIの学習処理を開始する", disabled=(selected_csv is 
             all_feat_cols = lag_cols + mtf_cols
             df_tf_clean = df_tf.dropna(subset=all_feat_cols).reset_index(drop=True)
             
-            # Merge M1 labels
             df_m1_labels = df_m1[['DateTime', 'Label']].copy()
             df_tf_clean = pd.merge_asof(df_tf_clean.sort_values('DateTime'), df_m1_labels.sort_values('DateTime'), on='DateTime', direction='backward')
             
@@ -472,7 +580,6 @@ if st.button("🚀 AIの学習処理を開始する", disabled=(selected_csv is 
         X = np.vstack([X_m5, X_m15]).astype(np.float32)
         y = np.concatenate([y_m5, y_m15]).astype(np.int64)
 
-        # Train/Test Split (70% Train, 15% Val, 15% Test)
         n_samples = len(X)
         train_size = int(n_samples * 0.70)
         val_size = int(n_samples * 0.15)
@@ -480,7 +587,6 @@ if st.button("🚀 AIの学習処理を開始する", disabled=(selected_csv is 
         X_val, y_val = X[train_size:train_size+val_size], y[train_size:train_size+val_size]
         X_test, y_test = X[train_size+val_size:], y[train_size+val_size:]
 
-        # Train LightGBM model
         model = lgb.LGBMClassifier(
             n_estimators=n_estimators,
             learning_rate=learning_rate,
@@ -492,7 +598,6 @@ if st.button("🚀 AIの学習処理を開始する", disabled=(selected_csv is 
         model.fit(X_train, y_train, eval_set=[(X_val, y_val)], callbacks=[lgb.early_stopping(15, verbose=False)])
         best_iter = model.best_iteration_
 
-        # Retrain on full dataset
         final_model = lgb.LGBMClassifier(
             n_estimators=best_iter if best_iter > 0 else 100,
             learning_rate=learning_rate,
@@ -503,47 +608,35 @@ if st.button("🚀 AIの学習処理を開始する", disabled=(selected_csv is 
         )
         final_model.fit(X, y)
 
-        # Evaluate model
         y_pred = model.predict(X_test)
         acc = accuracy_score(y_test, y_pred)
         report = classification_report(y_test, y_pred, target_names=['Range', 'UP', 'DOWN'], output_dict=True)
 
-        # --------------------------------------------------------------
-        # EXPORT 1: ONNX Model
-        # --------------------------------------------------------------
         onnx_filename = f"ml_model_{symbol}_custom.onnx"
         initial_types = [('input', FloatTensorType([None, total_dim]))]
         onnx_model = onnxmltools.convert_lightgbm(final_model, initial_types=initial_types, target_opset=12, zipmap=False)
         onnxmltools.utils.save_model(onnx_model, onnx_filename)
 
-        # --------------------------------------------------------------
-        # EXPORT 2: Dynamic MQL5 Header File (*.mqh)
-        # --------------------------------------------------------------
         mqh_filename = f"Features_{symbol}_custom.mqh"
         
-        # Build Handles, Initializations, Releases, and Validations
         handles_set = set()
         handle_decls = []
         handle_inits = []
         handle_releases = []
         handle_validations = []
         
-        # Scan chosen features for handles
         all_chosen = selected_features
         for f in all_chosen:
             f_info = FEATURE_MAP[f]
             if "mql5_handle_decls" in f_info:
-                # Custom feature definitions drop-in
                 handle_decls.append(f_info["mql5_handle_decls"])
                 handle_inits.append(f_info["mql5_init"])
                 handle_releases.append(f_info["mql5_release"])
                 handle_validations.append(f_info["mql5_validation"])
-                # Mark custom handles in handles_set to prevent doubles
                 if "mql5_handle" in f_info and f_info["mql5_handle"]:
                     handles = [h.strip() for h in f_info["mql5_handle"].split(",") if h.strip()]
                     for h in handles: handles_set.add(h)
             else:
-                # Standard feature handles
                 h_name = f_info.get("mql5_handle")
                 if h_name and h_name not in handles_set:
                     handles_set.add(h_name)
@@ -552,7 +645,6 @@ if st.button("🚀 AIの学習処理を開始する", disabled=(selected_csv is 
                     handle_releases.append(f"    IndicatorRelease({h_name});")
                     handle_validations.append(f"    if({h_name} == INVALID_HANDLE) return false;")
         
-        # EMA_Diff_ATR_Ratio_60m and EMA_Diff_ATR_Ratio_240m require special handles in MQL5
         if "EMA_Diff_ATR_Ratio_60m" in all_chosen:
             if "hATR_H1" not in handles_set:
                 handle_decls.append("int hATR_H1;")
@@ -568,7 +660,6 @@ if st.button("🚀 AIの学習処理を開始する", disabled=(selected_csv is 
                 handle_validations.append("    if(hATR_H4 == INVALID_HANDLE) return false;")
                 handles_set.add("hATR_H4")
         
-        # Multi_Symbol EA also needs D1 ATR for spread scaling and volatility calculations
         if "hATR_D1" not in handles_set:
             handle_decls.append("int hATR_D1;")
             handle_inits.append("    hATR_D1 = iATR(smb, PERIOD_D1, 14);")
@@ -581,23 +672,19 @@ if st.button("🚀 AIの学習処理を開始する", disabled=(selected_csv is 
         handle_releases_str = "\n".join(handle_releases)
         handle_validation_str = "\n".join(handle_validations)
 
-        # Base Feature calculations code block
         base_calc_lines = []
         for f in base_m5_selected:
             base_calc_lines.append(f"        // --- {f} ---\n{FEATURE_MAP[f]['mql5_calc']}\n")
         base_calc_str = "\n".join(base_calc_lines)
 
-        # MTF Feature calculations code block
         mtf_calc_lines = []
         for f in mtf_selected:
             if "mql5_calc_mtf" in FEATURE_MAP[f]:
                 mtf_calc_lines.append(f"    // --- {f} ---\n{FEATURE_MAP[f]['mql5_calc_mtf']}\n")
             else:
-                # If custom feature is marked in MTF category
                 mtf_calc_lines.append(f"    // --- {f} ---\n{FEATURE_MAP[f]['mql5_calc']}\n")
         mtf_calc_str = "\n".join(mtf_calc_lines)
 
-        # Combine into complete MQH template
         mqh_content = f"""//+------------------------------------------------------------------+
 //|                                           {mqh_filename} |
 //|        Generated automatically by AI Trader Custom ML Builder    |
@@ -678,37 +765,41 @@ bool ConstructCustomInputs(string smb, float &inputs[], double point)
         with open(mqh_filename, "w", encoding="utf-8") as f:
             f.write(mqh_content)
 
-        # --------------------------------------------------------------
-        # UI Metrics Display (日本語化)
-        # --------------------------------------------------------------
+        # UI Metrics Display
         st.success("🎉 AIモデルの学習、およびファイル出力が完了しました！")
         
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            st.metric("検証データ予測正解率 (Accuracy)", f"{acc*100:.2f}%")
-        with col2:
-            st.metric("買いシグナル(UP) の精度 (Precision)", f"{report['UP']['precision']*100:.2f}%")
-        with col3:
-            st.metric("売りシグナル(DOWN) の精度 (Precision)", f"{report['DOWN']['precision']*100:.2f}%")
+        st.markdown(f"""
+        <div style="display: flex; gap: 16px; margin: 1.5rem 0; flex-wrap: wrap;">
+            <div style="flex: 1; min-width: 200px; background: #161922; border: 1px solid #2d3446; border-radius: 12px; padding: 22px; text-align: center; box-shadow: 0 4px 15px rgba(0,0,0,0.15); border-top: 4px solid #4B79FF;">
+                <div style="font-size: 0.95rem; color: #94a3b8; margin-bottom: 8px; font-weight: 500;">検証データ予測正解率 (Accuracy)</div>
+                <div style="font-size: 2.2rem; font-weight: 800; color: #4B79FF; font-family: 'Outfit', sans-serif;">{acc*100:.2f}%</div>
+            </div>
+            <div style="flex: 1; min-width: 200px; background: #161922; border: 1px solid #2d3446; border-radius: 12px; padding: 22px; text-align: center; box-shadow: 0 4px 15px rgba(0,0,0,0.15); border-top: 4px solid #00E676;">
+                <div style="font-size: 0.95rem; color: #94a3b8; margin-bottom: 8px; font-weight: 500;">買いシグナル(UP) の精度 (Precision)</div>
+                <div style="font-size: 2.2rem; font-weight: 800; color: #00E676; font-family: 'Outfit', sans-serif;">{report['UP']['precision']*100:.2f}%</div>
+            </div>
+            <div style="flex: 1; min-width: 200px; background: #161922; border: 1px solid #2d3446; border-radius: 12px; padding: 22px; text-align: center; box-shadow: 0 4px 15px rgba(0,0,0,0.15); border-top: 4px solid #FF1744;">
+                <div style="font-size: 0.95rem; color: #94a3b8; margin-bottom: 8px; font-weight: 500;">売りシグナル(DOWN) の精度 (Precision)</div>
+                <div style="font-size: 2.2rem; font-weight: 800; color: #FF1744; font-family: 'Outfit', sans-serif;">{report['DOWN']['precision']*100:.2f}%</div>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+
         
-        # Classification report in table
         st.subheader("📊 詳細評価レポート")
         df_report = pd.DataFrame(report).transpose().iloc[:3]
         df_report.index = ["レンジ判定 (Range)", "上昇予測 (UP)", "下落予測 (DOWN)"]
         df_report.columns = ["適合率 (Precision)", "再現率 (Recall)", "F1スコア (F1-score)", "テストデータ数 (Support)"]
         st.dataframe(df_report.style.format("{:.4f}"))
 
-        # Feature Importance Plot
-        st.subheader("🔥 特徴量重要度 (どのインジケータがAIの予測に効いているか)")
+        st.subheader("🔥 特徴量重要度")
         importance = model.feature_importances_
         df_imp = pd.DataFrame({"インジケータ": feat_names, "貢献度": importance}).sort_values("貢献度", ascending=False)
         st.bar_chart(df_imp.set_index("インジケータ"))
 
-        # Output Files Display
         st.subheader("💾 生成されたファイル")
         st.write(f"1. **ONNXモデル (AI本体)**: `{os.path.abspath(onnx_filename)}`")
         st.write(f"2. **MQL5ヘッダー (計算式コード)**: `{os.path.abspath(mqh_filename)}`")
         
-        # Provide code preview
-        with st.expander("📝 生成された MQL5 ソースコードのプレビュー (Features.mqh)"):
+        with st.expander("📝 生成された MQL5 ソースコードのプレビュー"):
             st.code(mqh_content, language="mql5")
