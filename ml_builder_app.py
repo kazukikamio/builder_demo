@@ -24,70 +24,79 @@ st.markdown("""
         font-family: 'Inter', sans-serif;
     }
     
-    /* チェックボックスをプレミアムなカードスタイルへ */
+    /* チェックボックスをプレミアムなカードスタイルへ（テーマ自動追従型） */
     div[data-testid="stCheckbox"] {
-        background-color: #1a1e29;
+        background-color: var(--secondary-background-color) !important;
         padding: 14px 20px;
         border-radius: 10px;
-        border: 1px solid #2d3446;
+        border: 1px solid rgba(128, 128, 128, 0.2) !important;
         margin-bottom: 12px;
         transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
-        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        box-shadow: 0 2px 8px rgba(0,0,0,0.08);
     }
     div[data-testid="stCheckbox"]:hover {
-        border-color: #FF4B4B;
-        background-color: #222735;
+        border-color: #FF4B4B !important;
         transform: translateY(-2px);
-        box-shadow: 0 6px 15px rgba(255, 75, 75, 0.15);
+        box-shadow: 0 6px 15px rgba(255, 75, 75, 0.18);
     }
     
-    /* チェックボックス内のテキスト */
-    div[data-testid="stCheckbox"] label {
-        font-size: 1.05rem !important;
+    /* チェックボックス内のすべてのテキストをテーマ色に追従 */
+    div[data-testid="stCheckbox"] * {
+        color: var(--text-color) !important;
+        font-size: 1.02rem !important;
         font-weight: 500 !important;
-        color: #e2e8f0 !important;
         cursor: pointer;
     }
     
-    /* タブのスタイル調整 */
+    /* タブのスタイル調整（テーマ追従） */
     button[data-baseweb="tab"] {
         font-size: 1.05rem !important;
         font-weight: 600 !important;
         padding: 12px 24px !important;
-        color: #a3a8b4 !important;
+        color: var(--text-color) !important;
+        opacity: 0.65;
     }
     button[data-baseweb="tab"][aria-selected="true"] {
         color: #FF4B4B !important;
         border-bottom-color: #FF4B4B !important;
+        opacity: 1;
     }
     
     /* アコーディオン(Expander)のスタイル */
     div[data-testid="stExpander"] {
-        border: 1px solid #2d3446 !important;
-        background-color: #161922 !important;
+        border: 1px solid rgba(128, 128, 128, 0.2) !important;
+        background-color: var(--secondary-background-color) !important;
         border-radius: 8px !important;
         margin-bottom: 15px !important;
     }
+    div[data-testid="stExpander"] * {
+        color: var(--text-color) !important;
+    }
     
-    /* サイドバー背景の微調整 */
+    /* サイドバー全体の文字色をテーマに強制追従（背景はStreamlit標準に任せることで同化を防ぐ） */
+    [data-testid="stSidebar"] * {
+        color: var(--text-color) !important;
+    }
+    
+    /* サイドバーの境界線だけスタイリッシュに */
     [data-testid="stSidebar"] {
-        background-color: #0f111a !important;
-        border-right: 1px solid #1f2330 !important;
+        border-right: 1px solid rgba(128, 128, 128, 0.15) !important;
     }
 </style>
 """, unsafe_allow_html=True)
 
 # タイトルと説明（HTML/CSSによるプレミアムヘッダー）
 st.markdown("""
-    <div style="text-align: center; padding: 2rem 1rem; margin-bottom: 2rem; background: linear-gradient(135deg, rgba(255,75,75,0.07) 0%, rgba(75,121,255,0.03) 100%); border-radius: 16px; border: 1px solid rgba(255,75,75,0.15); box-shadow: 0 4px 20px rgba(0,0,0,0.15);">
+    <div style="text-align: center; padding: 2.2rem 1.2rem; margin-bottom: 2rem; background: linear-gradient(135deg, rgba(255,75,75,0.06) 0%, rgba(75,121,255,0.03) 100%); border-radius: 16px; border: 1px solid rgba(255,75,75,0.15); box-shadow: 0 4px 25px rgba(0,0,0,0.08);">
         <h1 style="margin: 0; font-size: 2.8rem; font-weight: 800; font-family: 'Outfit', sans-serif; background: linear-gradient(90deg, #FF4B4B 0%, #FF8F8F 45%, #4B79FF 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">
             🚀 AI EA 自作モデルビルダー
         </h1>
-        <p style="margin: 12px 0 0 0; font-size: 1.15rem; color: #94a3b8; font-weight: 400;">
-            MT5のヒストリカルデータから、<strong>AIに学習させたいインジケータを選ぶだけ</strong>で、ご自身専用のAI予測モデル（ONNX）とMQL5コードを自動生成します。
+        <p style="margin: 12px 0 0 0; font-size: 1.15rem; color: var(--text-color); opacity: 0.8; font-weight: 400;">
+            MT5のヒストリカルデータから、<strong>AIに学習させたいインジケータを選ぶだけ</strong>で、ご自身専用 of AI予測モデル（ONNX）とMQL5コードを自動生成します。
         </p>
     </div>
 """, unsafe_allow_html=True)
+
 
 
 # ------------------------------------------------------------------
@@ -298,10 +307,10 @@ with st.sidebar.expander("🧠 AIモデル学習設定 (詳細)", expanded=False
 # 3. メイン画面：すっきりしたタブレイアウト
 # ------------------------------------------------------------------
 st.markdown("""
-    <h2 style="font-weight: 700; color: #fafafa; border-bottom: 2px solid #2d3446; padding-bottom: 8px; margin-top: 1.5rem;">
+    <h2 style="font-weight: 700; color: var(--text-color); border-bottom: 2px solid rgba(128, 128, 128, 0.2); padding-bottom: 8px; margin-top: 1.5rem;">
         🛠️ ステップ1: AIに読み込ませるインジケータの選択
     </h2>
-    <p style="font-size: 1.05rem; color: #94a3b8; margin-bottom: 1.5rem;">
+    <p style="font-size: 1.05rem; color: var(--text-color); opacity: 0.8; margin-bottom: 1.5rem;">
         AIに値動きの予測判断材料として使わせたいインジケータにチェックを入れてください。※マウスホバーで説明が表示されます
     </p>
 """, unsafe_allow_html=True)
@@ -352,7 +361,7 @@ total_dim = dim_base + dim_mtf
 st.markdown(f"""
     <div style="background: linear-gradient(135deg, rgba(75,121,255,0.08) 0%, rgba(75,121,255,0.01) 100%); border: 1px solid rgba(75,121,255,0.3); border-radius: 12px; padding: 18px 24px; margin: 1.5rem 0; box-shadow: 0 4px 12px rgba(75,121,255,0.05);">
         <div style="font-size: 1.15rem; font-weight: 700; color: #799fff; margin-bottom: 4px;">📊 選択された合計次元数: {total_dim}次元</div>
-        <div style="font-size: 0.95rem; color: #94a3b8;">
+        <div style="font-size: 0.95rem; color: var(--text-color); opacity: 0.8;">
             ベース特徴量: {len(base_m5_selected)}個 × 4つの時系列履歴 ({dim_base}次元) ＋ 上位足・環境情報: {len(mtf_selected)}次元
         </div>
     </div>
@@ -362,7 +371,7 @@ st.markdown(f"""
 # 5. モデル学習と書き出し
 # ------------------------------------------------------------------
 st.markdown("""
-    <h2 style="font-weight: 700; color: #fafafa; border-bottom: 2px solid #2d3446; padding-bottom: 8px; margin-top: 2rem; margin-bottom: 1.2rem;">
+    <h2 style="font-weight: 700; color: var(--text-color); border-bottom: 2px solid rgba(128, 128, 128, 0.2); padding-bottom: 8px; margin-top: 2rem; margin-bottom: 1.2rem;">
         🤖 モデルの学習とコード書き出し
     </h2>
 """, unsafe_allow_html=True)
@@ -770,16 +779,16 @@ bool ConstructCustomInputs(string smb, float &inputs[], double point)
         
         st.markdown(f"""
         <div style="display: flex; gap: 16px; margin: 1.5rem 0; flex-wrap: wrap;">
-            <div style="flex: 1; min-width: 200px; background: #161922; border: 1px solid #2d3446; border-radius: 12px; padding: 22px; text-align: center; box-shadow: 0 4px 15px rgba(0,0,0,0.15); border-top: 4px solid #4B79FF;">
-                <div style="font-size: 0.95rem; color: #94a3b8; margin-bottom: 8px; font-weight: 500;">検証データ予測正解率 (Accuracy)</div>
+            <div style="flex: 1; min-width: 200px; background: var(--secondary-background-color); border: 1px solid rgba(128, 128, 128, 0.2); border-radius: 12px; padding: 22px; text-align: center; box-shadow: 0 4px 15px rgba(0,0,0,0.06); border-top: 4px solid #4B79FF;">
+                <div style="font-size: 0.95rem; color: var(--text-color); opacity: 0.7; margin-bottom: 8px; font-weight: 500;">検証データ予測正解率 (Accuracy)</div>
                 <div style="font-size: 2.2rem; font-weight: 800; color: #4B79FF; font-family: 'Outfit', sans-serif;">{acc*100:.2f}%</div>
             </div>
-            <div style="flex: 1; min-width: 200px; background: #161922; border: 1px solid #2d3446; border-radius: 12px; padding: 22px; text-align: center; box-shadow: 0 4px 15px rgba(0,0,0,0.15); border-top: 4px solid #00E676;">
-                <div style="font-size: 0.95rem; color: #94a3b8; margin-bottom: 8px; font-weight: 500;">買いシグナル(UP) の精度 (Precision)</div>
+            <div style="flex: 1; min-width: 200px; background: var(--secondary-background-color); border: 1px solid rgba(128, 128, 128, 0.2); border-radius: 12px; padding: 22px; text-align: center; box-shadow: 0 4px 15px rgba(0,0,0,0.06); border-top: 4px solid #00E676;">
+                <div style="font-size: 0.95rem; color: var(--text-color); opacity: 0.7; margin-bottom: 8px; font-weight: 500;">買いシグナル(UP) の精度 (Precision)</div>
                 <div style="font-size: 2.2rem; font-weight: 800; color: #00E676; font-family: 'Outfit', sans-serif;">{report['UP']['precision']*100:.2f}%</div>
             </div>
-            <div style="flex: 1; min-width: 200px; background: #161922; border: 1px solid #2d3446; border-radius: 12px; padding: 22px; text-align: center; box-shadow: 0 4px 15px rgba(0,0,0,0.15); border-top: 4px solid #FF1744;">
-                <div style="font-size: 0.95rem; color: #94a3b8; margin-bottom: 8px; font-weight: 500;">売りシグナル(DOWN) の精度 (Precision)</div>
+            <div style="flex: 1; min-width: 200px; background: var(--secondary-background-color); border: 1px solid rgba(128, 128, 128, 0.2); border-radius: 12px; padding: 22px; text-align: center; box-shadow: 0 4px 15px rgba(0,0,0,0.06); border-top: 4px solid #FF1744;">
+                <div style="font-size: 0.95rem; color: var(--text-color); opacity: 0.7; margin-bottom: 8px; font-weight: 500;">売りシグナル(DOWN) の精度 (Precision)</div>
                 <div style="font-size: 2.2rem; font-weight: 800; color: #FF1744; font-family: 'Outfit', sans-serif;">{report['DOWN']['precision']*100:.2f}%</div>
             </div>
         </div>
